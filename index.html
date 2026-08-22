@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Hand Tracking 3D Particles</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      background: #000;
+      overflow: hidden;
+      touch-action: none;
+    }
+    #three-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1;
+    }
+    #webcam {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+      transform: scaleX(-1);
+      opacity: 0.22;
+      z-index: 2;
+    }
+    #hand-canvas {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 3;
+      pointer-events: none;
+    }
+    #status {
+      position: fixed;
+      top: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255, 80, 120, 0.9);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-size: 14px;
+      letter-spacing: 2px;
+      z-index: 10;
+      text-shadow: 0 0 15px rgba(255, 80, 120, 0.8);
+      white-space: nowrap;
+    }
+    #hint {
+      position: fixed;
+      bottom: 20px;
+      right: 24px;
+      color: rgba(255, 255, 255, 0.45);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-size: 12px;
+      line-height: 1.9;
+      text-align: right;
+      z-index: 10;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="three-canvas"></canvas>
+  <video id="webcam" autoplay muted playsinline></video>
+  <canvas id="hand-canvas"></canvas>
+  <div id="status">PARTICLE HEART ♥</div>
+  <div id="hint">
+    1 أصبع = ادفع<br>
+    2 أصابع = نجمة<br>
+    3 أصابع = كرة<br>
+    0 أو 4+ = قلب
+  </div>
+
+  <script>
+    const threeCanvas = document.getElementById('three-canvas');
+    const renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    const scene = new THREE.Scene();
+    const cam3d = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    cam3d.position.z = 5;
+
+    const COUNT = 18000;
+    const geo = new THREE.BufferGeometry();
+    const positions = new Float32Array(COUNT * 3);
+    const targets = new Float32Array(COUNT * 3);
+    const colors = new Float32Array(COUNT * 3);
+
+    for (let i = 0; i < COUNT; i++) {
+      const i3 = i * 3;
+      positions[i3] = (Math.random() - 0.5) * 10;
+      positions[i3 + 1] = (Math.random() - 0.5) * 10;
+      positions[i3 + 2] = (Math.random() - 0.5) * 10;
+
+      const r = Math.random();
+      if (r < 0.5) {
+        colors[i3] = 1; colors[i3 + 1] = 0.2; colors[i3 + 2] = 0.4;
+      } else if (r < 0.8) {
+        colors[i3] = 1; colors[i3 + 1] = 0.05; colors[i3 + 2] = 0.2;
+      } else {
+        colors[i3] = 1; colors[i3 + 1] = 0.8; colors[i3 + 2] = 0.9;
+      }
+    }
+
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    const mat = new THREE.PointsMaterial({
+      size: 0.03,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.9,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+
+    const ps = new THREE.Points(geo, mat);
+    scene.add(ps);
+
+    let currentShape = 'heart';
+    let handPoint = new THREE.Vector3();
+    let pushing = false;
+    let targetRotX = 0;
+    let targetRotY = 0;
+    let targetScl = 1;
+
+    function heart() {
+      for (let i = 0; i < COUNT; i++) {
+        const i3 = i * 3;
+        const t = Math.random() * Math.PI * 2;
+        const r = Math.pow(Math.random(), 0.5);
+        const s = 0.13 * r;
+        const x = 16 * Math.pow(Math.sin(t), 3);
+        const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+        const z = (Math.random() - 0.5) * 8;
+        targets[i3] = x * s;
+        targets[i3 + 1] = y * s;
+        targets[i3 + 2] = z;
+      }
+    }
+
+    function star() {
+      for (let i = 0; i < COUNT; i++) {
+        const i3 = i * 3;
+        const r = Math.pow(Math.random(), 0.5) * 2.5;
+        const branch = i % 5;
+        const branchAngle = (branch / 5 + Math.random() * 0.08) * Math.PI * 2;
+        targets[i3] = Math.cos(branchAngle) * r;
+        targets[i3 + 1] = Math.sin(branchAngle) * r;
+        targets[i3 + 2] = (Math.random() - 0.5) * 2;
+      }
+    }
+
+    function sphere() {
+      for (let i = 0; i < COUNT; i++) {
+        const i3 = i * 3;
+        const r = Math.pow(Math.random(), 0.3) * 2.2;
+        const a = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        targets[i3] = r * Math.sin(phi) * Math.cos(a);
+        targets[i3 + 1] = r * Math.sin(phi) * Math.sin(a);
+        targets[i3 + 2] = r * Math.cos(phi);
+      }
+    }
+
+    heart();
+
+    const videoEl = document.getElementById('webcam');
+    const handCanvas = document.getElementById('hand-canvas');
+    const hCtx = handCanvas.getContext('2d');
+    const statusEl = document.getElementById('status');
+
+    function resizeHandCanvas() {
+      handCanvas.width = window.innerWidth;
+      handCanvas.height = window.innerHeight;
+    }
+    resizeHandCanvas();
+
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+
+    hands.setOptions({
+      maxNumHands: 2,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.6,
+      minTrackingConfidence: 0.5,
+      selfieMode: true
+    });
+
+    hands.onResults((results) => {
+      hCtx.save();
+      hCtx.clearRect(0, 0, handCanvas.width, handCanvas.height);
+
+      if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+        pushing = false;
+        hCtx.restore();
+        return;
+      }
+
+      for (let h = 0; h < results.multiHandLandmarks.length; h++) {
+        const lm = results.multiHandLandmarks[h];
+        
+        drawConnectors(hCtx, lm, HAND_CONNECTIONS, { color: 'rgba(255,80,150,0.85)', lineWidth: 3 });
+        drawLandmarks(hCtx, lm, { color: '#fff', fillColor: 'rgba(255,80,150,0.7)', radius: 5 });
+
+        const tip = lm[8];
+
+        targetRotY = (0.5 - tip.x) * Math.PI * 4;
+        targetRotX = (tip.y - 0.5) * Math.PI * 4;
+        handPoint.set((0.5 - tip.x) * 10, (0.5 - tip.y) * 10, 0);
+
+        const ext = [8, 12, 16, 20].filter(j => lm[j].y < lm[j - 2].y).length;
+
+        if (results.multiHandedness && results.multiHandedness[h] && results.multiHandedness[h].label === 'Right') {
+          const d = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y);
+          targetScl = THREE.MathUtils.clamp(d * 6, 0.3, 3);
+        }
+
+        if (ext === 1) {
+          pushing = true;
+        } else {
+          pushing = false;
+          if (ext === 2 && currentShape !== 'star') {
+            star();
+            currentShape = 'star';
+            statusEl.textContent = 'PARTICLE STAR ★';
+          } else if (ext === 3 && currentShape !== 'sphere') {
+            sphere();
+            currentShape = 'sphere';
+            statusEl.textContent = 'PARTICLE SPHERE ●';
+          } else if ((ext === 0 || ext >= 4) && currentShape !== 'heart') {
+            heart();
+            currentShape = 'heart';
+            statusEl.textContent = 'PARTICLE HEART ♥';
+          }
+        }
+      }
+      hCtx.restore();
+    });
+
+    function startCam() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        statusEl.textContent = 'يجب فتح الصفحة عبر HTTPS أو Localhost';
+        return;
+      }
+
+      const camera = new Camera(videoEl, {
+        onFrame: async () => {
+          await hands.send({ image: videoEl });
+        },
+        width: 1280,
+        height: 720
+      });
+      camera.start().catch(() => {
+        statusEl.textContent = 'فعّل إذن الكاميرا من إعدادات المتصفح';
+      });
+    }
+    startCam();
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const pos = geo.attributes.position.array;
+
+      for (let i = 0; i < COUNT; i++) {
+        const i3 = i * 3;
+        let px = pos[i3];
+        let py = pos[i3 + 1];
+        let pz = pos[i3 + 2];
+
+        px += (targets[i3] - px) * 0.07;
+        py += (targets[i3 + 1] - py) * 0.07;
+        pz += (targets[i3 + 2] - pz) * 0.07;
+
+        if (pushing) {
+          const dx = px - handPoint.x;
+          const dy = py - handPoint.y;
+          const dSq = dx * dx + dy * dy;
+          if (dSq < 1.5) {
+            const f = (1.5 - dSq) * 0.35;
+            px += dx * f;
+            py += dy * f;
+          }
+        }
+
+        pos[i3] = px;
+        pos[i3 + 1] = py;
+        pos[i3 + 2] = pz;
+      }
+
+      geo.attributes.position.needsUpdate = true;
+
+      ps.rotation.x = THREE.MathUtils.lerp(ps.rotation.x, targetRotX, 0.08);
+      ps.rotation.y = THREE.MathUtils.lerp(ps.rotation.y, targetRotY, 0.08);
+      
+      const currentScale = THREE.MathUtils.lerp(ps.scale.x, targetScl, 0.08);
+      ps.scale.set(currentScale, currentScale, currentScale);
+
+      renderer.render(scene, cam3d);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      cam3d.aspect = window.innerWidth / window.innerHeight;
+      cam3d.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      resizeHandCanvas();
+    });
+  </script>
+</body>
+</html>
