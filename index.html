@@ -9,68 +9,21 @@
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    body {
-      background: #000;
-      overflow: hidden;
-      touch-action: none;
-    }
-    #three-canvas {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      z-index: 1;
-    }
-    #webcam {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      object-fit: cover;
-      transform: scaleX(-1);
-      opacity: 0.22;
-      z-index: 2;
-    }
-    #hand-canvas {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      z-index: 3;
-      pointer-events: none;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; touch-action: none; }
+    #three-canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+    #webcam { position: fixed; bottom: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover; transform: scaleX(-1); opacity: 0.22; z-index: 2; }
+    #hand-canvas { position: fixed; bottom: 0; left: 0; width: 100vw; height: 100vh; z-index: 3; pointer-events: none; }
     #status {
-      position: fixed;
-      top: 18px;
-      left: 50%;
-      transform: translateX(-50%);
-      color: rgba(255, 80, 120, 0.9);
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      font-size: 14px;
-      letter-spacing: 2px;
-      z-index: 10;
-      text-shadow: 0 0 15px rgba(255, 80, 120, 0.8);
-      white-space: nowrap;
+      position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+      color: rgba(255, 80, 120, 0.9); font-family: 'Segoe UI', sans-serif;
+      font-size: 14px; letter-spacing: 2px; z-index: 10;
+      text-shadow: 0 0 15px rgba(255, 80, 120, 0.8); white-space: nowrap;
     }
     #hint {
-      position: fixed;
-      bottom: 20px;
-      right: 24px;
-      color: rgba(255, 255, 255, 0.45);
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      font-size: 12px;
-      line-height: 1.9;
-      text-align: right;
-      z-index: 10;
-      pointer-events: none;
+      position: fixed; bottom: 20px; right: 24px;
+      color: rgba(255, 255, 255, 0.45); font-family: 'Segoe UI', sans-serif;
+      font-size: 12px; line-height: 1.9; text-align: right; z-index: 10; pointer-events: none;
     }
   </style>
 </head>
@@ -88,15 +41,16 @@
 
   <script>
     const threeCanvas = document.getElementById('three-canvas');
-    const renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, antialias: true, alpha: true });
+    const renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, antialias: false, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(1);
 
     const scene = new THREE.Scene();
     const cam3d = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     cam3d.position.z = 5;
 
-    const COUNT = 18000;
+    // تم تقليل العدد ليعمل بسلاسة على الهاتف
+    const COUNT = 3500;
     const geo = new THREE.BufferGeometry();
     const positions = new Float32Array(COUNT * 3);
     const targets = new Float32Array(COUNT * 3);
@@ -122,7 +76,7 @@
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
     const mat = new THREE.PointsMaterial({
-      size: 0.03,
+      size: 0.06,
       vertexColors: true,
       transparent: true,
       opacity: 0.9,
@@ -197,9 +151,9 @@
     });
 
     hands.setOptions({
-      maxNumHands: 2,
-      modelComplexity: 1,
-      minDetectionConfidence: 0.6,
+      maxNumHands: 1,
+      modelComplexity: 0,
+      minDetectionConfidence: 0.5,
       minTrackingConfidence: 0.5,
       selfieMode: true
     });
@@ -214,63 +168,47 @@
         return;
       }
 
-      for (let h = 0; h < results.multiHandLandmarks.length; h++) {
-        const lm = results.multiHandLandmarks[h];
-        
-        drawConnectors(hCtx, lm, HAND_CONNECTIONS, { color: 'rgba(255,80,150,0.85)', lineWidth: 3 });
-        drawLandmarks(hCtx, lm, { color: '#fff', fillColor: 'rgba(255,80,150,0.7)', radius: 5 });
+      const lm = results.multiHandLandmarks[0];
+      drawConnectors(hCtx, lm, HAND_CONNECTIONS, { color: 'rgba(255,80,150,0.85)', lineWidth: 2 });
+      drawLandmarks(hCtx, lm, { color: '#fff', fillColor: 'rgba(255,80,150,0.7)', radius: 4 });
 
-        const tip = lm[8];
+      const tip = lm[8];
+      targetRotY = (0.5 - tip.x) * Math.PI * 4;
+      targetRotX = (tip.y - 0.5) * Math.PI * 4;
+      handPoint.set((0.5 - tip.x) * 10, (0.5 - tip.y) * 10, 0);
 
-        targetRotY = (0.5 - tip.x) * Math.PI * 4;
-        targetRotX = (tip.y - 0.5) * Math.PI * 4;
-        handPoint.set((0.5 - tip.x) * 10, (0.5 - tip.y) * 10, 0);
+      const ext = [8, 12, 16, 20].filter(j => lm[j].y < lm[j - 2].y).length;
 
-        const ext = [8, 12, 16, 20].filter(j => lm[j].y < lm[j - 2].y).length;
-
-        if (results.multiHandedness && results.multiHandedness[h] && results.multiHandedness[h].label === 'Right') {
-          const d = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y);
-          targetScl = THREE.MathUtils.clamp(d * 6, 0.3, 3);
-        }
-
-        if (ext === 1) {
-          pushing = true;
-        } else {
-          pushing = false;
-          if (ext === 2 && currentShape !== 'star') {
-            star();
-            currentShape = 'star';
-            statusEl.textContent = 'PARTICLE STAR ★';
-          } else if (ext === 3 && currentShape !== 'sphere') {
-            sphere();
-            currentShape = 'sphere';
-            statusEl.textContent = 'PARTICLE SPHERE ●';
-          } else if ((ext === 0 || ext >= 4) && currentShape !== 'heart') {
-            heart();
-            currentShape = 'heart';
-            statusEl.textContent = 'PARTICLE HEART ♥';
-          }
+      if (ext === 1) {
+        pushing = true;
+      } else {
+        pushing = false;
+        if (ext === 2 && currentShape !== 'star') {
+          star();
+          currentShape = 'star';
+          statusEl.textContent = 'PARTICLE STAR ★';
+        } else if (ext === 3 && currentShape !== 'sphere') {
+          sphere();
+          currentShape = 'sphere';
+          statusEl.textContent = 'PARTICLE SPHERE ●';
+        } else if ((ext === 0 || ext >= 4) && currentShape !== 'heart') {
+          heart();
+          currentShape = 'heart';
+          statusEl.textContent = 'PARTICLE HEART ♥';
         }
       }
       hCtx.restore();
     });
 
     function startCam() {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        statusEl.textContent = 'يجب فتح الصفحة عبر HTTPS أو Localhost';
-        return;
-      }
-
       const camera = new Camera(videoEl, {
         onFrame: async () => {
           await hands.send({ image: videoEl });
         },
-        width: 1280,
-        height: 720
+        width: 480,
+        height: 360
       });
-      camera.start().catch(() => {
-        statusEl.textContent = 'فعّل إذن الكاميرا من إعدادات المتصفح';
-      });
+      camera.start();
     }
     startCam();
 
@@ -309,9 +247,6 @@
 
       ps.rotation.x = THREE.MathUtils.lerp(ps.rotation.x, targetRotX, 0.08);
       ps.rotation.y = THREE.MathUtils.lerp(ps.rotation.y, targetRotY, 0.08);
-      
-      const currentScale = THREE.MathUtils.lerp(ps.scale.x, targetScl, 0.08);
-      ps.scale.set(currentScale, currentScale, currentScale);
 
       renderer.render(scene, cam3d);
     }
